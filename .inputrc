@@ -1,0 +1,27 @@
+# .inputrc — readline config for QNAP bash
+# Place in /share/NFSv=4/homes/admin/.inputrc
+
+# Enable case-insensitive completion
+set completion-ignore-case on
+
+# Show all completions immediately on double-Tab (no bell)
+set show-all-if-ambiguous on
+set show-all-if-unmodified on
+
+# Silence the bell
+set bell-style none
+
+# Up/Down arrows search history based on already-typed prefix
+"\e[A": history-search-backward
+"\e[B": history-search-forward
+
+# Ctrl+Left / Ctrl+Right — word navigation
+"\e[1;5C": forward-word
+"\e[1;5D": backward-word
+
+# Show file type in completion (trailing / @ etc)
+set visible-stats on
+set mark-symlinked-directories on
+
+# Limit completion query to avoid accidental huge lists
+set completion-query-items 200
