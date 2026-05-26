@@ -1,11 +1,18 @@
 #!/bin/sh
 # =============================================================================
-# test-shell.sh — Verify dotfiles are correctly deployed and shell is bash
+# test-shell.sh — Verify dotfiles, shell, and git repos are correctly set up
 #
 # Run AFTER install.sh and after reconnecting via SSH:
 #   bash /share/CACHEDEV2_DATA/repos/qnap-dotfiles/test-shell.sh
 #
-# Each test prints PASS or FAIL with a short explanation.
+# NOTE: always invoke with 'bash', not 'sh':
+#   sh test-shell.sh   → $0 = "test-shell.sh"  (script name, not shell name)
+#   bash test-shell.sh → $BASH_VERSION = 5.x   (correct detection)
+#
+# Why $0 is wrong for shell detection:
+#   $0 is the name of the running script when invoked as 'sh script.sh'.
+#   It only reflects the shell name for interactive sessions (-bash, -sh).
+#   $BASH_VERSION is set by bash itself regardless of how the script is called.
 # =============================================================================
 
 PASS=0
@@ -14,14 +21,18 @@ FAIL=0
 ok()   { echo "  PASS  $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL  $1"; FAIL=$((FAIL+1)); }
 info() { echo "  INFO  $1"; }
+warn() { echo "  WARN  $1"; }
 
 echo ""
 echo "=== test-shell.sh ==="
 echo ""
 
-# --- 1. Active shell is bash (check BASH_VERSION, not $0) ---
+# --- 1. Active shell is bash ---
+# $0 trap: when run as 'sh test-shell.sh', $0 = script path, not shell name.
+# Use $BASH_VERSION instead — set by bash itself unconditionally.
 info "\$0           = $0"
 info "\$BASH_VERSION = ${BASH_VERSION:-<not set>}"
+info "(tip: run with 'bash test-shell.sh', not 'sh test-shell.sh')"
 case "${BASH_VERSION:-}" in
   5.*) ok "Active shell is bash 5.x (BASH_VERSION=$BASH_VERSION)" ;;
   4.*) ok "Active shell is bash 4.x (BASH_VERSION=$BASH_VERSION)" ;;
@@ -82,21 +93,57 @@ else
   fail "$REPOS missing — run: mkdir -p $REPOS"
 fi
 
-# --- 8. config-keeper data repo on SSD ---
+# --- 8. config-keeper data repo: exists, has remote, can fetch ---
 CK="/share/CACHEDEV2_DATA/config-keeper"
 if [ -d "$CK/.git" ]; then
   ok "$CK is a git repo"
+
   REMOTE=$(git -C "$CK" remote get-url origin 2>/dev/null || echo "")
   if [ -n "$REMOTE" ]; then
     ok "config-keeper remote: $REMOTE"
   else
     fail "config-keeper has no remote — run: git -C $CK remote add origin https://github.com/KonradLanz/qnap-config-keeper.git"
   fi
+
+  # git fetch (read-only connectivity check)
+  if git -C "$CK" fetch --dry-run origin 2>/dev/null; then
+    ok "config-keeper: git fetch origin reachable"
+  else
+    warn "config-keeper: git fetch --dry-run failed (network issue or remote wrong?)"
+  fi
+
+  # check for unpushed commits
+  AHEAD=$(git -C "$CK" rev-list origin/main..HEAD 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${AHEAD:-0}" -eq 0 ]; then
+    ok "config-keeper: no unpushed commits"
+  else
+    fail "config-keeper: $AHEAD unpushed commit(s) — run: git -C $CK push origin main"
+  fi
+
+  # check for uncommitted changes
+  if git -C "$CK" diff --quiet HEAD 2>/dev/null; then
+    ok "config-keeper: working tree clean"
+  else
+    warn "config-keeper: uncommitted changes present (run: git -C $CK status)"
+  fi
 else
   fail "$CK is not a git repo"
 fi
 
-# --- 9. git-filter-repo available ---
+# --- 9. dotfiles repo: check for unpushed commits ---
+DOTFILES="$REPOS/qnap-dotfiles"
+if [ -d "$DOTFILES/.git" ]; then
+  AHEAD=$(git -C "$DOTFILES" rev-list origin/main..HEAD 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${AHEAD:-0}" -eq 0 ]; then
+    ok "qnap-dotfiles: no unpushed commits"
+  else
+    fail "qnap-dotfiles: $AHEAD unpushed commit(s) — run: git -C $DOTFILES push origin main"
+  fi
+else
+  warn "qnap-dotfiles not found at $DOTFILES (run from the repo itself?)"
+fi
+
+# --- 10. git-filter-repo available ---
 if [ -x "/opt/bin/git-filter-repo" ]; then
   ok "git-filter-repo found at /opt/bin/git-filter-repo"
 else
