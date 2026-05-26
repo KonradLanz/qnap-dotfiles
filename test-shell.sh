@@ -3,7 +3,7 @@
 # test-shell.sh — Verify dotfiles are correctly deployed and shell is bash
 #
 # Run AFTER install.sh and after reconnecting via SSH:
-#   sh /share/CACHEDEV2_DATA/repos/qnap-dotfiles/test-shell.sh
+#   bash /share/CACHEDEV2_DATA/repos/qnap-dotfiles/test-shell.sh
 #
 # Each test prints PASS or FAIL with a short explanation.
 # =============================================================================
@@ -19,12 +19,15 @@ echo ""
 echo "=== test-shell.sh ==="
 echo ""
 
-# --- 1. Active shell is bash ---
-info "\$0   = $0"
+# --- 1. Active shell is bash (check BASH_VERSION, not $0) ---
+info "\$0           = $0"
 info "\$BASH_VERSION = ${BASH_VERSION:-<not set>}"
-case "$0" in
-  -bash|bash) ok "Active shell is bash" ;;
-  *)          fail "Active shell is NOT bash (got: $0) — reconnect via SSH after install.sh" ;;
+case "${BASH_VERSION:-}" in
+  5.*) ok "Active shell is bash 5.x (BASH_VERSION=$BASH_VERSION)" ;;
+  4.*) ok "Active shell is bash 4.x (BASH_VERSION=$BASH_VERSION)" ;;
+  3.*) fail "Shell is bash 3.x — this is QNAP's bundled /bin/bash, not Entware. Run: exec /opt/bin/bash --login" ;;
+  "")  fail "Active shell is NOT bash (BASH_VERSION not set) — reconnect via SSH after install.sh" ;;
+  *)   fail "Unexpected BASH_VERSION=$BASH_VERSION" ;;
 esac
 
 # --- 2. Real bash is Entware bash 5.x ---
