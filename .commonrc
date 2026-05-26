@@ -1,0 +1,50 @@
+# =============================================================================
+# .commonrc — shared shell configuration (bash + zsh)
+#
+# Sourced by .bashrc and .zshrc alike.
+# Contains: PATH, exports, aliases, functions — everything shell-agnostic.
+#
+# QNAP-specific: Entware lives under /opt; not in the default PATH.
+# =============================================================================
+
+# ── Entware PATH (QNAP) ──────────────────────────────────────────────────────
+case ":$PATH:" in
+  *:/opt/bin:*) ;;
+  *) export PATH="/opt/bin:/opt/sbin:$PATH" ;;
+esac
+
+# ── Shell ────────────────────────────────────────────────────────────────────
+export SHELL="$(command -v bash 2>/dev/null || command -v sh)"
+export EDITOR="$(command -v vim 2>/dev/null || echo vi)"
+export PAGER="less"
+export LESS="-R"
+
+# ── Locale ───────────────────────────────────────────────────────────────────
+export LANG="en_US.UTF-8"
+export LC_ALL="en_US.UTF-8"
+
+# ── History ──────────────────────────────────────────────────────────────────
+export HISTSIZE=10000
+export HISTFILESIZE=20000
+export HISTCONTROL="ignoredups:erasedups"
+
+# ── Aliases: Navigation ──────────────────────────────────────────────────────
+alias ..='cd ..'
+alias ...='cd ../..'
+alias ll='ls -lAh'
+alias la='ls -A'
+alias l='ls -CF'
+
+# ── Aliases: Safety ──────────────────────────────────────────────────────────
+alias rm='rm -i'
+alias cp='cp -i'
+alias mv='mv -i'
+
+# ── Aliases: QNAP-specific ───────────────────────────────────────────────────
+alias git='/opt/bin/git'
+alias snap='/opt/bin/qnap-config-keeper.sh snap'
+alias keeper-status='/opt/bin/qnap-config-keeper.sh status'
+alias keeper-audit='/opt/bin/qnap-config-keeper.sh audit'
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+path_show() { echo "$PATH" | tr ':' '\n'; }
