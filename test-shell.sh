@@ -13,6 +13,12 @@
 #   $0 is the name of the running script when invoked as 'sh script.sh'.
 #   It only reflects the shell name for interactive sessions (-bash, -sh).
 #   $BASH_VERSION is set by bash itself regardless of how the script is called.
+#
+# Why config-keeper has no 'origin' remote (by design):
+#   config-keeper contains sensitive snapshots (keys, hashes, tokens).
+#   It is intentionally NOT pushed to GitHub. The only remote is 'backup',
+#   pointing to a local bare repo on CE_CACHEDEV4_DATA.
+#   See CONVENTIONS.md for the data/script separation rationale.
 # =============================================================================
 
 PASS=0
@@ -28,8 +34,6 @@ echo "=== test-shell.sh ==="
 echo ""
 
 # --- 1. Active shell is bash ---
-# $0 trap: when run as 'sh test-shell.sh', $0 = script path, not shell name.
-# Use $BASH_VERSION instead — set by bash itself unconditionally.
 info "\$0           = $0"
 info "\$BASH_VERSION = ${BASH_VERSION:-<not set>}"
 info "(tip: run with 'bash test-shell.sh', not 'sh test-shell.sh')"
@@ -93,31 +97,33 @@ else
   fail "$REPOS missing — run: mkdir -p $REPOS"
 fi
 
-# --- 8. config-keeper data repo: exists, has remote, can fetch ---
+# --- 8. config-keeper data repo: exists, has local backup remote (NOT GitHub) ---
 CK="/share/CACHEDEV2_DATA/config-keeper"
+BACKUP_REMOTE="/share/CE_CACHEDEV4_DATA/backup/config-keeper.git"
 if [ -d "$CK/.git" ]; then
   ok "$CK is a git repo"
 
-  REMOTE=$(git -C "$CK" remote get-url origin 2>/dev/null || echo "")
-  if [ -n "$REMOTE" ]; then
-    ok "config-keeper remote: $REMOTE"
+  # config-keeper must NOT have an origin remote (data stays local)
+  ORIGIN=$(git -C "$CK" remote get-url origin 2>/dev/null || echo "")
+  if [ -n "$ORIGIN" ]; then
+    fail "config-keeper has 'origin' remote set to $ORIGIN — sensitive data repo must NOT push to GitHub. Run: git -C $CK remote remove origin"
   else
-    fail "config-keeper has no remote — run: git -C $CK remote add origin https://github.com/KonradLanz/qnap-config-keeper.git"
+    ok "config-keeper: no 'origin' remote (correct — data stays local)"
   fi
 
-  # git fetch (read-only connectivity check)
-  if git -C "$CK" fetch --dry-run origin 2>/dev/null; then
-    ok "config-keeper: git fetch origin reachable"
+  # config-keeper must have a local backup remote
+  BACKUP=$(git -C "$CK" remote get-url backup 2>/dev/null || echo "")
+  if [ -n "$BACKUP" ]; then
+    ok "config-keeper backup remote: $BACKUP"
   else
-    warn "config-keeper: git fetch --dry-run failed (network issue or remote wrong?)"
+    fail "config-keeper has no 'backup' remote — run: git -C $CK remote add backup $BACKUP_REMOTE"
   fi
 
-  # check for unpushed commits
-  AHEAD=$(git -C "$CK" rev-list origin/main..HEAD 2>/dev/null | wc -l | tr -d ' ')
-  if [ "${AHEAD:-0}" -eq 0 ]; then
-    ok "config-keeper: no unpushed commits"
+  # check local backup bare repo exists
+  if [ -d "$BACKUP_REMOTE" ]; then
+    ok "backup bare repo exists: $BACKUP_REMOTE"
   else
-    fail "config-keeper: $AHEAD unpushed commit(s) — run: git -C $CK push origin main"
+    fail "backup bare repo missing — run: git clone --bare $CK $BACKUP_REMOTE"
   fi
 
   # check for uncommitted changes
@@ -125,6 +131,14 @@ if [ -d "$CK/.git" ]; then
     ok "config-keeper: working tree clean"
   else
     warn "config-keeper: uncommitted changes present (run: git -C $CK status)"
+  fi
+
+  # check for unpushed commits to backup
+  AHEAD=$(git -C "$CK" rev-list backup/main..HEAD 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${AHEAD:-0}" -eq 0 ]; then
+    ok "config-keeper: backup is up-to-date"
+  else
+    fail "config-keeper: $AHEAD unpushed commit(s) to backup — run: git -C $CK push backup main"
   fi
 else
   fail "$CK is not a git repo"
@@ -140,10 +154,29 @@ if [ -d "$DOTFILES/.git" ]; then
     fail "qnap-dotfiles: $AHEAD unpushed commit(s) — run: git -C $DOTFILES push origin main"
   fi
 else
-  warn "qnap-dotfiles not found at $DOTFILES (run from the repo itself?)"
+  warn "qnap-dotfiles not found at $DOTFILES"
 fi
 
-# --- 10. git-filter-repo available ---
+# --- 10. qnap-config-keeper script repo ---
+KEEPER="$REPOS/qnap-config-keeper"
+if [ -d "$KEEPER/.git" ]; then
+  REMOTE=$(git -C "$KEEPER" remote get-url origin 2>/dev/null || echo "")
+  if [ -n "$REMOTE" ]; then
+    ok "qnap-config-keeper script repo remote: $REMOTE"
+  else
+    fail "qnap-config-keeper has no remote — run: git -C $KEEPER remote add origin https://github.com/KonradLanz/qnap-config-keeper.git"
+  fi
+  AHEAD=$(git -C "$KEEPER" rev-list origin/main..HEAD 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${AHEAD:-0}" -eq 0 ]; then
+    ok "qnap-config-keeper: no unpushed commits"
+  else
+    fail "qnap-config-keeper: $AHEAD unpushed commit(s) — run: git -C $KEEPER push origin main"
+  fi
+else
+  fail "qnap-config-keeper script repo missing — run: git clone https://github.com/KonradLanz/qnap-config-keeper.git $KEEPER"
+fi
+
+# --- 11. git-filter-repo available ---
 if [ -x "/opt/bin/git-filter-repo" ]; then
   ok "git-filter-repo found at /opt/bin/git-filter-repo"
 else
