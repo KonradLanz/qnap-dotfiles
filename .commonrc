@@ -15,9 +15,30 @@ esac
 
 # ── Shell ────────────────────────────────────────────────────────────────────
 export SHELL="$(command -v bash 2>/dev/null || command -v sh)"
-export EDITOR="$(command -v vim 2>/dev/null || echo vi)"
 export PAGER="less"
 export LESS="-R"
+
+# ── Editor: Entware-vim > busybox vi > vi
+#    QNAP-System-vim (/bin/vim → QPKG vim 7.2) hat kaputtes TTY-Handling
+#    und wird bewusst übersprungen.
+_pick_editor() {
+  if   [ -x /opt/bin/vim ];  then echo /opt/bin/vim
+  elif busybox --list 2>/dev/null | grep -q '^vi$'; then echo 'busybox vi'
+  else echo vi
+  fi
+}
+export EDITOR="$(_pick_editor)"
+unset -f _pick_editor
+
+# vim/vi aliase: Entware-vim wenn vorhanden, sonst busybox vi
+# Verhindert Aufruf von /bin/vim (QNAP-QPKG, TTY-Problem)
+if [ -x /opt/bin/vim ]; then
+  alias vim='/opt/bin/vim'
+  alias vi='/opt/bin/vim'
+else
+  alias vim='busybox vi'
+  alias vi='busybox vi'
+fi
 
 # ── Locale ───────────────────────────────────────────────────────────────────
 export LANG="en_US.UTF-8"
