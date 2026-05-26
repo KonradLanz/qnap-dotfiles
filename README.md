@@ -1,70 +1,75 @@
 # qnap-dotfiles
 
-Dotfiles for **QNAP QTS** (BusyBox `ash` + firmware-bundled `bash 3.2`).
+Dotfiles and development conventions for **QNAP QTS** (BusyBox `ash` + Entware `bash`).
 
-Focuses on things that are regularly lost or reset after QTS firmware updates:
-- Persistent `bash` history across SSH reconnects and abrupt disconnects
-- Readline config (arrow-key history search, case-insensitive completion, no bell)
-- Minimal `vim` config
-- Entware `PATH` integration
+Companion project: [qnap-config-keeper](https://github.com/KonradLanz/qnap-config-keeper) — tracks `/etc/config` system files.
 
-## The core problem this solves
+---
 
-QNAP's default login shell is BusyBox `ash`. It does not save history on abrupt
-SSH disconnects. Even with `/bin/bash` (v3.2), history is only written on clean
-`exit` — not when the connection drops.
-
-This repo ships a `.bashrc` with:
-```sh
-shopt -s histappend
-export PROMPT_COMMAND="history -a${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
-```
-This writes every command to `~/.bash_history` immediately, surviving any disconnect.
-
-## Files
-
-| File | Purpose |
-|---|---|
-| `.bashrc` | Main shell config: history, aliases, PATH, prompt |
-| `.bash_profile` | Login shell entry point, sources `.bashrc` |
-| `.inputrc` | Readline: arrow-key history search, completion, no bell |
-| `.vimrc` | Minimal vim config |
-| `install.sh` | Deploy script with `.bak` backup of existing files |
-
-## Installation
+## Quick Start
 
 ```sh
-# On your QNAP via SSH
-cd /share/NFSv=4/homes/admin
+# On your QNAP via SSH (as admin)
+export PATH="/opt/bin:/opt/sbin:$PATH"
+cd /share/CACHEDEV2_DATA/repos
 git clone https://github.com/KonradLanz/qnap-dotfiles.git
 cd qnap-dotfiles
-sh install.sh
+sh install.sh migrate   # deploy dotfiles + move repos to CACHEDEV2_DATA/repos/
 ```
 
 Then reload:
 ```sh
-. ~/.bashrc
+. ~/.profile   # or reconnect via SSH — bash starts automatically
 ```
 
-## After a QTS firmware update
+---
 
-Firmware updates may reset `/bin/bash` or `/etc` but leave
-`/share/NFSv=4/homes/admin/` intact. Re-run `sh install.sh` to restore.
+## What This Repo Does
 
-The `.bash_history` file itself lives on your data volume and is **not** affected
-by firmware updates.
+| File | Purpose |
+|---|---|
+| `.commonrc` | Shared POSIX config: PATH, aliases, exports (bash + zsh) |
+| `.profile` | Login hook: source `.commonrc` + `exec bash` auto-start |
+| `.bashrc` | bash options, prompt, completion |
+| `.bash_profile` | Login shell entry point, sources `.bashrc` |
+| `.inputrc` | Readline: arrow-key history search, no bell |
+| `.vimrc` | Minimal vim config |
+| `install.sh` | Deploy dotfiles + optional repo migration |
+| `CONVENTIONS.md` | Directory layout, user, and repo placement rules |
+| `commonrc-spec.md` | Proposal for a shell-agnostic `.commonrc` standard |
 
-## Relation to qnap-config-keeper
+---
 
-This repo tracks your *shell environment*. The companion project
-[qnap-config-keeper](https://github.com/KonradLanz/qnap-config-keeper)
-tracks `/etc/config` and system-level config files.
+## Directory Layout
 
-TODO: Decide whether to:
-- Keep as a standalone repo (current approach)
-- Integrate dotfile tracking into `qnap-config-keeper`
-- Package as an Entware `opkg` package
+See [CONVENTIONS.md](CONVENTIONS.md) for the full rationale. In brief:
+
+```
+/share/CACHEDEV2_DATA/
+├── config-keeper/      ← system config snapshots (cron — must be on SSD)
+└── repos/
+    ├── qnap-dotfiles/
+    ├── qnap-config-keeper/
+    └── entware-packages/
+```
+
+---
+
+## The `.commonrc` Convention
+
+A single POSIX-compatible file sourced by both `.bashrc` and `.zshrc`.
+No duplication, no shell-specific drift. See [commonrc-spec.md](commonrc-spec.md)
+for the full proposal and prior art.
+
+---
+
+## Why `exec bash` Instead of Changing `/etc/passwd`
+
+QNAP resets `/etc/passwd` on every reboot. `.profile` uses `exec /opt/bin/bash --login`
+to replace the ash process with bash — no subshell overhead, no `/etc/passwd` hacks.
+
+---
 
 ## License
 
-MIT
+AGPLv3
