@@ -8,19 +8,26 @@ It is the source of truth for directory layout, repo placement, and user convent
 ## Directory Layout
 
 ```
+/root/                           ← admin HOME (UID 0, persists across reboots)
+    ├── .commonrc                ← deployed by install.sh
+    ├── .profile                 ← deployed by install.sh
+    ├── .bashrc                  ← deployed by install.sh
+    └── .bash_history            ← persists across reboots (not tracked)
+
 /share/CACHEDEV2_DATA/          ← SSD (fast, survives reboot)
 ├── config-keeper/              ← git repo: system config snapshots (must be on SSD)
 └── repos/                      ← all other development repos
-    ├── qnap-dotfiles/            ← this repo
-    ├── qnap-config-keeper/       ← config-keeper script source
-    └── entware-packages/         ← custom Entware package builds
-
-/share/CE_CACHEDEV4_DATA/homes/admin/    ← admin home (HDD)
-    ├── .commonrc                 ← deployed by install.sh
-    ├── .profile                  ← deployed by install.sh
-    ├── .bashrc                   ← deployed by install.sh
-    └── .bash_history             ← persists across reboots (not tracked)
+    ├── qnap-dotfiles/           ← this repo
+    ├── qnap-config-keeper/      ← config-keeper script source
+    └── entware-packages/        ← custom Entware package builds
 ```
+
+### Why /root as admin home?
+
+On QNAP, `admin` is UID 0. `/etc/passwd` maps admin → `/root` and resets on
+every reboot. `/root` itself persists on the system volume across reboots.
+`/share/CE_CACHEDEV4_DATA/homes/admin/` is the QTS file-manager view of the
+same user but is **not** the shell home — do not use it for dotfiles.
 
 ### Why SSD for repos?
 
@@ -29,20 +36,14 @@ It is the source of truth for directory layout, repo placement, and user convent
 - `CACHEDEV2_DATA` is the designated SSD/NVMe cache volume on this NAS
 - `config-keeper` runs 4x daily via cron — must never wake HDDs
 
-### Why not `~/` (admin home) for repos?
-
-- Admin home lives on `CE_CACHEDEV4_DATA` (HDD)
-- Dotfiles (`.bashrc`, `.profile`) belong there — they are small and only read at login
-- Dev repos do not belong there — they involve frequent I/O
-
 ---
 
 ## User Convention
 
-- **Always work as `admin`** — never directly as `root`
-- `admin` has persistent home, root-equivalent rights via QNAP ACL
-- `root` home (`/root`) is reset-prone and has no dotfiles support
-- Exception: `su` to root only for system-level one-off operations
+- **Always work as `admin`** via SSH — this is UID 0 on QNAP
+- `admin` = root on QNAP. There is no separate `root` user to switch to.
+- Never rely on `sudo` — it is not installed by default
+- Per-user projects (koni, georg, etc.) live on their own volumes, not under admin
 
 ---
 
@@ -52,7 +53,7 @@ It is the source of truth for directory layout, repo placement, and user convent
 |---|---|---|
 | `config-keeper` (data) | `/share/CACHEDEV2_DATA/config-keeper/` | Cron job — must be on SSD |
 | All dev repos | `/share/CACHEDEV2_DATA/repos/<name>/` | SSD, centrally managed |
-| Per-user projects | `~/projects/<name>/` (on own volume) | User-scoped, not admin concern |
+| Per-user projects | user home on own volume | User-scoped, not admin concern |
 
 ---
 
@@ -83,10 +84,29 @@ This ensures `git pull` and `git push` work without SSH key setup on the NAS.
 
 ## Shell Convention
 
-- Login shell in `/etc/passwd`: `ash` (QNAP default, reset on reboot — do not change)
-- Effective interactive shell: `bash` (auto-started via `.profile` using `exec`)
+- Login shell in `/etc/passwd`: `sh` → BusyBox ash (QNAP default, reset on every reboot)
+- `/bin/bash` is a symlink to `sh` on stock QNAP — it is NOT real bash
+- Real bash: `/opt/bin/bash` (Entware, bash 5.x)
+- Effective interactive shell: `/opt/bin/bash` (auto-started via `.profile` using `exec`)
+- `.profile` only fires on **new SSH login** — sourcing it manually does not trigger `exec`
 - Shared config: `~/.commonrc` (POSIX sh, sourced by both bash and any future zsh)
 - See [commonrc-spec.md](commonrc-spec.md) for the rationale
+
+### How to verify the active shell
+
+```sh
+echo $0              # -bash = bash login shell, -sh = ash
+echo $BASH_VERSION   # empty if not bash
+/opt/bin/bash --version  # should show 5.x
+```
+
+### Why .profile does not work when sourced manually
+
+`.profile` uses `exec /opt/bin/bash --login` to replace the ash process.
+`exec` replaces the current process — when you `source` (`. ~/.profile`) inside
+an already-running ash, the `exec` fires immediately and replaces that shell.
+If nothing happens, ash is already being replaced but the terminal re-attaches.
+The reliable way to activate: **open a new SSH session**.
 
 ---
 
@@ -94,7 +114,7 @@ This ensures `git pull` and `git push` work without SSH key setup on the NAS.
 
 `sh install.sh` from the repo root:
 
-1. Deploys dotfiles (`.commonrc`, `.profile`, `.bashrc`, `.inputrc`, `.vimrc`) to `$HOME`
+1. Deploys dotfiles (`.commonrc`, `.profile`, `.bashrc`, `.inputrc`, `.vimrc`) to `$HOME` (`/root`)
 2. Creates `/share/CACHEDEV2_DATA/repos/` if missing
 3. With `migrate`: moves existing repos from admin home into `repos/`
 4. Backs up any existing dotfile before overwriting (`.bak` suffix)
@@ -103,3 +123,5 @@ This ensures `git pull` and `git push` work without SSH key setup on the NAS.
 sh install.sh           # deploy dotfiles only
 sh install.sh migrate   # deploy + migrate repos to CACHEDEV2_DATA/repos/
 ```
+
+After install: **disconnect and reconnect via SSH** — do not source `.profile` manually.
